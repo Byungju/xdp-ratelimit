@@ -19,12 +19,49 @@ src/xdp_ratelimit.h       공용 상수
 scripts/setup_testbed.sh  netns + veth 테스트베드 생성
 scripts/teardown_testbed.sh
 scripts/iptables_rules.sh iptables hashlimit 규칙 on/off
+scripts/inspect_testbed.sh read-only 상태 점검
+bench/pktgen.c            AF_PACKET TX_RING 고속 트래픽 생성기
+bench/udp_sink.c          C UDP 수신기
+bench/run_bench.sh        XDP/iptables 비교 오케스트레이터
+bench/summarize.py        CSV → Markdown 요약
 tests/send_udp.py         UDP 부하 생성기 (기본/스모크용)
 tests/udp_sink.py         전달 검증용 UDP 수신기
+tests/send_variants.py    VLAN/IPv6/IHL 테스트 프레임
 tests/test_xdp_ratelimit.sh
 tests/test_iptables_rules.sh
 tmp/                      설계/분석 메모 (git 미포함)
 ```
+
+## 벤치마크
+
+```bash
+make bench
+./bench/run_bench.sh --quick          # 1회, 짧은 실행
+./bench/run_bench.sh                  # 기본 (reps=3, 3초 프로파일)
+./bench/run_bench.sh --modes "none xdp xdp-generic iptables" \
+    --profiles "load max" --reps 5
+```
+
+- 모드: `none`, `xdp`(auto/native), `xdp-generic`, `iptables`,
+  `xdp-drop`, `xdp-drop-generic`, `iptables-drop`
+- 프로파일:
+  - `burst`: 30,000패킷 최대 속도 (버킷 burst 의미론)
+  - `rate`: 5,000pps × 3초 (1 sender, rate 정확도)
+  - `load`: 200,000pps × 3초 (1 sender, 고정 부하 CPU 비교)
+  - `max`: 최대 속도 × 3초 (`--senders`, 기본 2)
+  - `multi`: 1,000 source, 최대 속도 × 3초 (`--senders`, 기본 2)
+- drop 모드는 `load`/`max`에서만 실행된다.
+- 결과: `bench/results/raw-*.csv`, `summary-*.md`, `env-*.txt` (git 미포함)
+
+측정은 trial마다 testbed를 재생성하고, warmup 후 limiter 상태/카운터를
+초기화한다. sender/sink는 CPU pinning, offload/GRO/GSO/TSO off, static
+neighbor, IPv6 off를 사용한다. `host ms/Mpps`는 host-wide `/proc/stat`이라
+공유 호스트에서 노이즈가 크므로 `processed pps`와 `sender ms/Mpps`를
+주 지표로 사용한다.
+
+주의: veth native XDP는 단일 queue/수신 경로 특성상 다중 sender에서
+스케일링이 제한될 수 있다. 이 프로젝트의 결과는 **동일 veth 토폴로지에서의
+상대 비교**이며 물리 NIC의 절대 성능이 아니다.
 
 ## 빌드
 

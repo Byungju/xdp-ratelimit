@@ -33,6 +33,7 @@ const volatile __u64 burst = RATELIMIT_DEFAULT_BURST;
 const volatile __u64 cost_ns = NSEC_PER_SEC / RATELIMIT_DEFAULT_RATE_PPS;
 const volatile __u64 capacity_ns =
 	(NSEC_PER_SEC / RATELIMIT_DEFAULT_RATE_PPS) * RATELIMIT_DEFAULT_BURST;
+const volatile __u32 drop_all = 0;
 
 struct iphdr_min {
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
@@ -83,6 +84,10 @@ int xdp_ratelimit(struct xdp_md *ctx)
 	ihl_bytes = (__u32)ip->ihl * 4;
 	if (ip->ihl < 5 || bpf_ntohs(ip->tot_len) < ihl_bytes)
 		return XDP_PASS;
+	if (drop_all) {
+		count_packet(RATELIMIT_STAT_DROP);
+		return XDP_DROP;
+	}
 
 	key = ip->saddr;
 	now = bpf_ktime_get_ns();

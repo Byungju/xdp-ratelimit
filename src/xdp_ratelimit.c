@@ -259,7 +259,7 @@ static int read_conf_mode(const char *iface, enum xdp_mode *mode)
 }
 
 static int cmd_load(const char *iface, __u64 rate, __u64 burst,
-		    enum xdp_mode mode, bool force)
+		    enum xdp_mode mode, bool force, bool drop_all)
 {
 	struct xdp_ratelimit_bpf *skel = NULL;
 	char dir[PATH_MAX], buckets[PATH_MAX], stats[PATH_MAX], conf[PATH_MAX];
@@ -322,6 +322,7 @@ static int cmd_load(const char *iface, __u64 rate, __u64 burst,
 	skel->rodata->burst = burst;
 	skel->rodata->cost_ns = cost_ns;
 	skel->rodata->capacity_ns = capacity_ns;
+	skel->rodata->drop_all = drop_all ? 1 : 0;
 
 	err = xdp_ratelimit_bpf__load(skel);
 	if (err) {
@@ -521,7 +522,7 @@ static void usage(const char *prog)
 		"usage: %s <command> [options]\n"
 		"\n"
 		"commands:\n"
-		"  load    --iface IF [--rate PPS] [--burst N] [--mode auto|native|generic] [--force]\n"
+		"  load    --iface IF [--rate PPS] [--burst N] [--mode auto|native|generic] [--force] [--drop-all]\n"
 		"  detach  --iface IF\n"
 		"  stats   --iface IF\n"
 		"  status  --iface IF\n"
@@ -539,6 +540,7 @@ int main(int argc, char **argv)
 	__u64 rate = RATELIMIT_DEFAULT_RATE_PPS;
 	__u64 burst = RATELIMIT_DEFAULT_BURST;
 	bool force = false;
+	bool drop_all = false;
 	const char *cmd;
 	int opt, err;
 
@@ -555,12 +557,13 @@ int main(int argc, char **argv)
 		{ "mode", required_argument, NULL, 'm' },
 		{ "netns", required_argument, NULL, 'n' },
 		{ "force", no_argument, NULL, 'f' },
+		{ "drop-all", no_argument, NULL, 'x' },
 		{ "help", no_argument, NULL, 'h' },
 		{ NULL, 0, NULL, 0 },
 	};
 
 	optind = 2;
-	while ((opt = getopt_long(argc, argv, "i:r:b:m:n:fh", long_opts,
+	while ((opt = getopt_long(argc, argv, "i:r:b:m:n:fxh", long_opts,
 				  NULL)) != -1) {
 		switch (opt) {
 		case 'i':
@@ -583,6 +586,9 @@ int main(int argc, char **argv)
 			break;
 		case 'f':
 			force = true;
+			break;
+		case 'x':
+			drop_all = true;
 			break;
 		default:
 			usage(argv[0]);
@@ -613,7 +619,7 @@ int main(int argc, char **argv)
 			usage(argv[0]);
 			return 1;
 		}
-		return cmd_load(iface, rate, burst, mode, force);
+		return cmd_load(iface, rate, burst, mode, force, drop_all);
 	}
 	if (!strcmp(cmd, "detach")) {
 		if (!iface) {

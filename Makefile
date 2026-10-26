@@ -15,9 +15,14 @@ BPF_CFLAGS	:= -g -O2 -target bpf -D__TARGET_ARCH_$(ARCH) \
 CFLAGS		:= -g -O2 -Wall -Wextra -Isrc -I$(BUILD)
 LDLIBS		:= -lbpf -lelf -lz
 
-.PHONY: all clean test
+BENCH_PKTGEN	:= $(BUILD)/pktgen
+BENCH_SINK	:= $(BUILD)/udp_sink
+
+.PHONY: all clean test bench
 
 all: $(BIN)
+
+bench: $(BENCH_PKTGEN) $(BENCH_SINK)
 
 $(BUILD):
 	mkdir -p $(BUILD)
@@ -32,9 +37,18 @@ $(SKEL): $(BPF_OBJ)
 $(BIN): src/xdp_ratelimit.c src/xdp_ratelimit.h $(SKEL) | $(BUILD)
 	$(CC) $(CFLAGS) $< -o $@ $(LDLIBS)
 
+$(BENCH_PKTGEN): bench/pktgen.c | $(BUILD)
+	$(CC) $(CFLAGS) $< -o $@
+
+$(BENCH_SINK): bench/udp_sink.c | $(BUILD)
+	$(CC) $(CFLAGS) $< -o $@
+
 clean:
 	rm -rf $(BUILD)
 
 test: all
 	./tests/test_iptables_rules.sh
 	./tests/test_xdp_ratelimit.sh
+
+bench-all: bench
+	./bench/run_bench.sh --quick
